@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Student Dashboard — Shiftly</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="navbar"></div>
+
+  <div class="dashboard-header">
+    <h2>Welcome, <span id="student-name"></span> 👋</h2>
+    <p>Track your job applications here</p>
+  </div>
+
+  <div class="container">
+    <div class="stats" id="stats"></div>
+
+    <div class="section-title">My Applications</div>
+    <div id="applications-list">
+      <div class="loading">Loading your applications...</div>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    document.getElementById('navbar').innerHTML = buildNav();
+
+    const user = getUser();
+    if (!user || user.role !== 'student') window.location.href = '/pages/login.html';
+
+    document.getElementById('student-name').textContent = user.name;
+
+    async function loadApplications() {
+      try {
+        const apps = await apiFetch('/applications/mine');
+        const list = document.getElementById('applications-list');
+
+        const pending = apps.filter(a => a.status === 'pending').length;
+        const accepted = apps.filter(a => a.status === 'accepted').length;
+        const rejected = apps.filter(a => a.status === 'rejected').length;
+
+        document.getElementById('stats').innerHTML = `
+          <div class="stat-box"><div class="num">${apps.length}</div><div class="label">Total Applied</div></div>
+          <div class="stat-box"><div class="num">${pending}</div><div class="label">Pending</div></div>
+          <div class="stat-box"><div class="num">${accepted}</div><div class="label">Accepted</div></div>
+          <div class="stat-box"><div class="num">${rejected}</div><div class="label">Rejected</div></div>
+        `;
+
+        if (apps.length === 0) {
+          list.innerHTML = `<div class="card"><p>You haven't applied to any jobs yet. <a href="/pages/jobs.html">Browse jobs</a></p></div>`;
+          return;
+        }
+
+        list.innerHTML = apps.map(app => `
+          <div class="card">
+            <h3>${app.job?.title || 'Job removed'}</h3>
+            <div class="meta">📍 ${app.job?.location || '-'} &nbsp;|&nbsp; 🕐 ${app.job?.hours || '-'}</div>
+            <div class="pay">₹${app.job?.pay || '-'}/hr</div>
+            <div style="margin-top:0.8rem">
+              Status: <span class="badge ${app.status}">${app.status}</span>
+            </div>
+          </div>
+        `).join('');
+      } catch (err) {
+        document.getElementById('applications-list').innerHTML = '<p class="loading">Error loading applications.</p>';
+      }
+    }
+
+    loadApplications();
+  </script>
+</body>
+</html>

@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Post a Job — Shiftly</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="navbar"></div>
+
+  <div class="form-card">
+    <h2>Post a Job</h2>
+    <div class="alert" id="alert"></div>
+
+    <div class="form-group">
+      <label>Job Title</label>
+      <input type="text" id="title" placeholder="e.g. Cafe Helper, Kitchen Staff">
+    </div>
+    <div class="form-group">
+      <label>Business Name</label>
+      <input type="text" id="businessName" placeholder="Your business name">
+    </div>
+    <div class="form-group">
+      <label>Location</label>
+      <input type="text" id="location" placeholder="e.g. Rajpur Road, Dehradun">
+    </div>
+    <div class="form-group">
+      <label>Pay per hour (₹)</label>
+      <input type="number" id="pay" placeholder="e.g. 80">
+    </div>
+    <div class="form-group">
+      <label>Working Hours</label>
+      <input type="text" id="hours" placeholder="e.g. 9am - 1pm, weekends">
+    </div>
+    <div class="form-group">
+      <label>Job Description</label>
+      <textarea id="description" placeholder="What will the student be doing?"></textarea>
+    </div>
+
+    <button class="btn-primary" onclick="postJob()">Post Job</button>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    document.getElementById('navbar').innerHTML = buildNav();
+
+    // Redirect if not a business
+    const user = getUser();
+    if (!user || user.role !== 'business') {
+      window.location.href = '/pages/login.html';
+    }
+
+    async function postJob() {
+      const title = document.getElementById('title').value.trim();
+      const businessName = document.getElementById('businessName').value.trim();
+      const location = document.getElementById('location').value.trim();
+      const pay = document.getElementById('pay').value;
+      const hours = document.getElementById('hours').value.trim();
+      const description = document.getElementById('description').value.trim();
+
+      if (!title || !businessName || !location || !pay || !hours || !description) {
+        return showAlert('alert', 'All fields are required');
+      }
+
+      try {
+        await apiFetch('/jobs', {
+          method: 'POST',
+          body: JSON.stringify({ title, businessName, location, pay, hours, description })
+        });
+        showAlert('alert', 'Job posted successfully!', 'success');
+        setTimeout(() => window.location.href = '/pages/business-dashboard.html', 1500);
+      } catch (err) {
+        showAlert('alert', err.message);
+      }
+    }
+  </script>
+</body>
+</html>

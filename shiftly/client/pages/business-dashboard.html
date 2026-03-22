@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Business Dashboard — Shiftly</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="navbar"></div>
+
+  <div class="dashboard-header">
+    <h2>Welcome, <span id="business-name"></span> 👋</h2>
+    <p>Manage your job postings and applications</p>
+  </div>
+
+  <div class="container">
+
+    <div class="stats" id="stats"></div>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem">
+      <span class="section-title">My Job Postings</span>
+      <a href="/pages/post-job.html" class="btn-primary" style="padding:0.5rem 1.2rem; font-size:0.9rem">+ Post New Job</a>
+    </div>
+
+    <div id="jobs-list">
+      <div class="loading">Loading your jobs...</div>
+    </div>
+
+    <div style="margin-top:2.5rem">
+      <span class="section-title">Applications Received</span>
+    </div>
+
+    <div id="applications-list">
+      <div class="loading">Loading applications...</div>
+    </div>
+
+  </div>
+
+  <!-- Modal for viewing applicants per job -->
+  <div id="modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:999; align-items:center; justify-content:center;">
+    <div style="background:white; border-radius:12px; padding:2rem; max-width:500px; width:90%; max-height:80vh; overflow-y:auto;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+        <h3 id="modal-title">Applicants</h3>
+        <button onclick="closeModal()" style="background:none; border:none; font-size:1.3rem; cursor:pointer;">✕</button>
+      </div>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    document.getElementById('navbar').innerHTML = buildNav();
+
+    const user = getUser();
+    if (!user || user.role !== 'business') window.location.href = '/pages/login.html';
+
+    document.getElementById('business-name').textContent = user.name;
+
+    let allJobs = [];
+    let allApplications = [];
+
+    async function loadDashboard() {
+      try {
+        allJobs = await apiFetch('/jobs/mine');
+        const jobsContainer = document.getElementById('jobs-list');
+
+        if (allJobs.length === 0) {
+          jobsContainer.innerHTML = `
+            <div class="card">
+              <p>No jobs posted yet. <a href="/pages/post-job.html">Post your first job</a></p>
+            </div>`;
+        } else {
+          jobsContainer.innerHTML = allJobs.map(job => `
+            <div class="card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+              <div>
+                <h3>${job.title}</h3>
+                <div class="meta">📍 ${job.location} &nbsp;|&nbsp; 🕐 ${job.hours}</div>
+                <div class="pay">₹${job.pay}/hr</div>
+              </div>
+              <div style="display:flex; gap:0.7rem;">
+                <button class="btn-primary" style="padding:0.45rem 1rem; font-size:0.85rem"
+                  onclick="viewApplicants('${job._id}', '${job.title}')">View Applicants</button>
+                <button class="btn-danger" onclick="deleteJob('${job._id}')">Delete</button>
+              </div>
+            </div>
+          `).join('');
+        }
+
+        // Load all applications across all jobs
+        await loadAllApplications();
+
+        // Stats
+        document.getElementById('stats').innerHTML = `
+          <div class="stat-box"><div class="num">${allJobs.length}</div><div class="label">Jobs Posted</div></div>
+          <div class="stat-box"><div class="num">${allApplications.length}</div><div class="label">Total Applications</div></div>
+          <div class="stat-box"><div class="num">${allApplications.filter(a => a.status === 'pending').length}</div><div class="label">Pending</div></div>
+          <div class="stat-box"><div class="num">${allApplications.filter(a => a.status === 'accepted').length}</div><div class="label">Accepted</div></div>
+        `;
+
+      } catch (err) {
+        document.getElementById('jobs-list').innerHTML = '<p class="loading">Error loading jobs.</p>';
+      }
+    }
+
+    async function loadAllApplications() {
+      const appContainer = document.getElementById('applications-list');
+      allApplications = [];
+
+      if (allJobs.length === 0) {
+        appContainer.innerHTML = '<div class="card"><p>No applications yet.</p></div>';
+        return;
+      }
+
+      try {
+        // Fetch applications for each job
+        for (const job of allJobs) {
+          const apps = await apiFetch(`/applications/job/${job._id}`);
+          apps.forEach(a => allApplications.push({ ...a, jobTitle: job.title }));
+        }
+
+        if (allApplications.length === 0) {
+          appContainer.innerHTML = '<div class="card"><p>No applications received yet.</p></div>';
+          return;
+        }
+
+        appContainer.innerHTML = allApplications.map(app => `
+          <div class="card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+            <div>
+              <h3>${app.student?.name || app.studentName}</h3>
+              <div class="meta">📧 ${app.student?.email || ''}</div>
+              <div class="meta">Applied for: <strong>${app.jobTitle}</strong></div>
+            </div>
+            <div style="display:flex; align-items:center; gap:0.7rem; flex-wrap:wrap;">
+              <span class="badge ${app.status}">${app.status}</span>
+              ${app.status === 'pending' ? `
+                <button class="btn-primary" style="padding:0.4rem 0.9rem; font-size:0.85rem"
+                  onclick="updateStatus('${app._id}', 'accepted')">Accept</button>
+                <button class="btn-danger" style="padding:0.4rem 0.9rem"
+                  onclick="updateStatus('${app._id}', 'rejected')">Reject</button>
+              ` : ''}
+            </div>
+          </div>
+        `).join('');
+
+      } catch (err) {
+        appContainer.innerHTML = '<p class="loading">Error loading applications.</p>';
+      }
+    }
+
+    async function updateStatus(appId, status) {
+      try {
+        await apiFetch(`/applications/${appId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ status })
+        });
+        loadDashboard();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    async function deleteJob(jobId) {
+      if (!confirm('Delete this job? All its applications will also be removed.')) return;
+      try {
+        await apiFetch(`/jobs/${jobId}`, { method: 'DELETE' });
+        loadDashboard();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    async function viewApplicants(jobId, jobTitle) {
+      document.getElementById('modal-title').textContent = `Applicants — ${jobTitle}`;
+      document.getElementById('modal-body').innerHTML = '<p>Loading...</p>';
+      document.getElementById('modal').style.display = 'flex';
+
+      try {
+        const apps = await apiFetch(`/applications/job/${jobId}`);
+        if (apps.length === 0) {
+          document.getElementById('modal-body').innerHTML = '<p>No applications yet for this job.</p>';
+          return;
+        }
+        document.getElementById('modal-body').innerHTML = apps.map(app => `
+          <div style="padding:0.8rem 0; border-bottom:1px solid #eee;">
+            <strong>${app.student?.name || app.studentName}</strong>
+            <div style="font-size:0.85rem; color:#777">${app.student?.email || ''}</div>
+            <div style="margin-top:0.4rem">
+              <span class="badge ${app.status}">${app.status}</span>
+            </div>
+          </div>
+        `).join('');
+      } catch (err) {
+        document.getElementById('modal-body').innerHTML = '<p>Error loading applicants.</p>';
+      }
+    }
+
+    function closeModal() {
+      document.getElementById('modal').style.display = 'none';
+    }
+
+    loadDashboard();
+  </script>
+</body>
+</html>
