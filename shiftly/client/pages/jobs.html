@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Browse Jobs — Shiftly</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="navbar"></div>
+
+  <div class="container">
+    <h2 style="margin-bottom:0.3rem">Available Jobs</h2>
+    <p style="color:#777; margin-bottom:1.5rem">Part-time shifts near you</p>
+
+    <div id="jobs-list" class="job-grid">
+      <div class="loading">Loading jobs...</div>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    document.getElementById('navbar').innerHTML = buildNav();
+    const user = getUser();
+
+    async function loadJobs() {
+      try {
+        const jobs = await apiFetch('/jobs');
+        const container = document.getElementById('jobs-list');
+
+        if (jobs.length === 0) {
+          container.innerHTML = '<p class="loading">No jobs posted yet.</p>';
+          return;
+        }
+
+        container.innerHTML = jobs.map(job => `
+          <div class="card">
+            <h3>${job.title}</h3>
+            <div class="meta">📍 ${job.location} &nbsp;|&nbsp; 🕐 ${job.hours}</div>
+            <div class="meta">🏪 ${job.businessName}</div>
+            <div class="pay">₹${job.pay}/hr</div>
+            <p style="margin:0.8rem 0; font-size:0.9rem; color:#555">${job.description}</p>
+            ${user && user.role === 'student'
+              ? `<button class="btn-primary" style="padding:0.5rem 1.2rem; font-size:0.9rem"
+                  onclick="apply('${job._id}')">Apply Now</button>`
+              : `<a href="/pages/login.html" class="btn-primary" style="padding:0.5rem 1.2rem; font-size:0.9rem">Login to Apply</a>`
+            }
+          </div>
+        `).join('');
+      } catch (err) {
+        document.getElementById('jobs-list').innerHTML = `<p class="loading">Error loading jobs.</p>`;
+      }
+    }
+
+    async function apply(jobId) {
+      if (!isLoggedIn()) return window.location.href = '/pages/login.html';
+      try {
+        await apiFetch(`/applications/${jobId}`, {
+          method: 'POST',
+          body: JSON.stringify({ studentName: user.name })
+        });
+        showAlert('alert', 'Applied successfully!', 'success');
+        alert('Application sent!');
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    loadJobs();
+  </script>
+</body>
+</html>
