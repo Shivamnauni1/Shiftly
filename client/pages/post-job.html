@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Post a Shift — Shiftly</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="navbar"></div>
+  <div class="form-page" style="align-items:flex-start;padding-top:3rem">
+    <div class="form-card" style="max-width:560px">
+      <h2>Post a Shift</h2>
+      <p class="form-subtitle">Tell students what you need and when</p>
+      <div class="alert" id="alert"></div>
+
+      <div class="form-group"><label>Job Title</label>
+        <input type="text" id="title" placeholder="e.g. Cafe Helper, Wedding Server, Kitchen Staff">
+      </div>
+      <div class="form-group"><label>Business Name</label>
+        <input type="text" id="businessName" placeholder="Your restaurant or shop name">
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Category</label>
+          <select id="category">
+            <option>Restaurant</option><option>Cafe</option><option>Wedding</option>
+            <option>Retail</option><option>Event</option><option>Other</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Workers Needed</label>
+          <input type="number" id="slotsTotal" placeholder="e.g. 3" min="1" max="50" value="1">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Location <span style="color:var(--text-muted);font-size:0.78rem">(we auto-detect coordinates)</span></label>
+        <input type="text" id="location" placeholder="e.g. Rajpur Road, Dehradun">
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Pay per hour (₹)</label>
+          <input type="number" id="pay" placeholder="e.g. 100">
+        </div>
+        <div class="form-group"><label>Shift Date</label>
+          <input type="date" id="date">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Start Time</label><input type="time" id="startTime"></div>
+        <div class="form-group"><label>End Time</label><input type="time" id="endTime"></div>
+      </div>
+      <div class="form-group"><label>What will the student do?</label>
+        <textarea id="description" placeholder="Describe the work — serving, cleaning, helping in kitchen, etc."></textarea>
+      </div>
+
+      <button class="btn btn-primary btn-full" id="postBtn" onclick="postJob()">Post Shift →</button>
+    </div>
+  </div>
+  <script src="/js/app.js"></script>
+  <script>
+    document.getElementById('navbar').innerHTML = buildNav();
+    const user = getUser();
+    if (!user || user.role !== 'business') window.location.href = '/pages/login.html';
+    document.getElementById('date').min = new Date().toISOString().split('T')[0];
+
+    async function postJob() {
+      const title = document.getElementById('title').value.trim();
+      const businessName = document.getElementById('businessName').value.trim();
+      const category = document.getElementById('category').value;
+      const slotsTotal = document.getElementById('slotsTotal').value;
+      const location = document.getElementById('location').value.trim();
+      const pay = document.getElementById('pay').value;
+      const date = document.getElementById('date').value;
+      const startTime = document.getElementById('startTime').value;
+      const endTime = document.getElementById('endTime').value;
+      const description = document.getElementById('description').value.trim();
+
+      if (!title || !businessName || !location || !pay || !date || !startTime || !endTime || !description || !slotsTotal) {
+        return showAlert('alert', 'All fields are required');
+      }
+      if (endTime <= startTime) return showAlert('alert', 'End time must be after start time');
+
+      const btn = document.getElementById('postBtn');
+      btn.disabled = true;
+      btn.textContent = 'Posting...';
+
+      // Auto-geocode the location (free, no API key needed)
+      let lat = null, lng = null;
+      const coords = await geocodeLocation(location);
+      if (coords) { lat = coords.lat; lng = coords.lng; }
+
+      try {
+        await apiFetch('/jobs', {
+          method: 'POST',
+          body: JSON.stringify({ title, businessName, category, slotsTotal: parseInt(slotsTotal), location, lat, lng, pay, date, startTime, endTime, description })
+        });
+        showAlert('alert', 'Shift posted successfully!', 'success');
+        setTimeout(() => window.location.href = '/pages/business-dashboard.html', 1200);
+      } catch (err) {
+        showAlert('alert', err.message);
+        btn.disabled = false;
+        btn.textContent = 'Post Shift →';
+      }
+    }
+  </script>
+</body>
+</html>

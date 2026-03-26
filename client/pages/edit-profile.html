@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Edit Profile — Shiftly</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="navbar"></div>
+  <div class="form-page" style="align-items:flex-start;padding-top:3rem">
+    <div class="form-card" style="max-width:520px">
+      <h2>Edit Profile</h2>
+      <p class="form-subtitle">Update your information</p>
+      <div class="alert" id="alert"></div>
+      <div id="form-fields"></div>
+      <button class="btn btn-primary btn-full" onclick="saveProfile()">Save Changes</button>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    document.getElementById('navbar').innerHTML = buildNav();
+    const me = getUser();
+    if (!me) window.location.href = '/pages/login.html';
+
+    async function loadProfile() {
+      try {
+        const user = await apiFetch('/users/me');
+        const fields = document.getElementById('form-fields');
+
+        if (user.role === 'student') {
+          fields.innerHTML = `
+            <div class="form-group"><label>Full Name</label><input type="text" id="name" value="${user.name || ''}"></div>
+            <div class="form-group"><label>College / University</label><input type="text" id="college" value="${user.college || ''}"></div>
+            <div class="form-group"><label>Skills (comma separated)</label><input type="text" id="skills" value="${(user.skills||[]).join(', ')}" placeholder="e.g. serving, cooking, cashier"></div>`;
+        } else {
+          fields.innerHTML = `
+            <div class="form-group"><label>Business Name</label><input type="text" id="name" value="${user.name || ''}"></div>
+            <div class="form-group"><label>Business Type</label>
+              <select id="businessType">
+                <option ${user.businessType==='Restaurant'?'selected':''}>Restaurant</option>
+                <option ${user.businessType==='Cafe'?'selected':''}>Cafe</option>
+                <option ${user.businessType==='Wedding'?'selected':''}>Wedding</option>
+                <option ${user.businessType==='Retail'?'selected':''}>Retail</option>
+                <option ${user.businessType==='Event'?'selected':''}>Event</option>
+                <option ${user.businessType==='Other'?'selected':''}>Other</option>
+              </select>
+            </div>
+            <div class="form-group"><label>Location</label><input type="text" id="businessLocation" value="${user.businessLocation || ''}"></div>
+            <div class="form-group"><label>About your business</label><textarea id="businessDescription">${user.businessDescription || ''}</textarea></div>`;
+        }
+      } catch (err) { showAlert('alert', err.message); }
+    }
+
+    async function saveProfile() {
+      const me = getUser();
+      try {
+        const body = { name: document.getElementById('name')?.value };
+        if (me.role === 'student') {
+          body.college = document.getElementById('college')?.value;
+          body.skills = document.getElementById('skills')?.value.split(',').map(s => s.trim()).filter(Boolean);
+        } else {
+          body.businessType = document.getElementById('businessType')?.value;
+          body.businessLocation = document.getElementById('businessLocation')?.value;
+          body.businessDescription = document.getElementById('businessDescription')?.value;
+        }
+        await apiFetch('/users/me', { method: 'PUT', body: JSON.stringify(body) });
+        // Update local name
+        const user = getUser();
+        user.name = body.name;
+        localStorage.setItem('user', JSON.stringify(user));
+        showAlert('alert', 'Profile updated!', 'success');
+        setTimeout(() => window.location.href = '/pages/profile.html', 1200);
+      } catch (err) { showAlert('alert', err.message); }
+    }
+
+    loadProfile();
+  </script>
+</body>
+</html>

@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Business Dashboard — Shiftly</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="navbar"></div>
+  <div class="dashboard-hero">
+    <h2>Hey, <span id="bname" style="color:var(--accent)"></span> 👋</h2>
+    <p>Manage your shifts and applicants</p>
+  </div>
+  <div class="container">
+    <div class="stats-grid" id="stats"></div>
+
+    <div class="section-title">
+      My Shifts
+      <a href="/pages/post-job.html" class="btn btn-primary btn-sm">+ Post New Shift</a>
+    </div>
+    <div id="jobs-list" style="margin-bottom:2.5rem"></div>
+
+    <div class="section-title">All Applications</div>
+    <div id="apps-list"></div>
+  </div>
+
+  <!-- Applicants Modal -->
+  <div class="modal-overlay" id="modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modal-title">Applicants</h3>
+        <button class="modal-close" onclick="closeModal()">✕</button>
+      </div>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- Rating Modal -->
+  <div class="modal-overlay" id="ratingModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Rate this Student</h3>
+        <button class="modal-close" onclick="closeRatingModal()">✕</button>
+      </div>
+      <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:1rem">How was this student's work?</p>
+      <div class="star-input" id="starInput">
+        <span onclick="setStar(1)">★</span><span onclick="setStar(2)">★</span>
+        <span onclick="setStar(3)">★</span><span onclick="setStar(4)">★</span><span onclick="setStar(5)">★</span>
+      </div>
+      <div class="form-group"><label>Review (optional)</label><textarea id="reviewText" placeholder="How was their work?"></textarea></div>
+      <button class="btn btn-primary btn-full" onclick="submitRating()">Submit Rating</button>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    document.getElementById('navbar').innerHTML = buildNav();
+    const user = getUser();
+    if (!user || user.role !== 'business') window.location.href = '/pages/login.html';
+    document.getElementById('bname').textContent = user.name;
+
+    let allJobs = [], allApps = [], selectedStar = 0, currentAppId = null;
+
+    function setStar(n) {
+      selectedStar = n;
+      document.querySelectorAll('#starInput span').forEach((s,i) => s.classList.toggle('active', i < n));
+    }
+
+    function openRatingModal(appId) { currentAppId = appId; document.getElementById('ratingModal').classList.add('open'); }
+    function closeRatingModal() { document.getElementById('ratingModal').classList.remove('open'); selectedStar = 0; }
+    function closeModal() { document.getElementById('modal').classList.remove('open'); }
+
+    async function submitRating() {
+      if (!selectedStar) return alert('Please select a star rating');
+      try {
+        await apiFetch('/ratings', { method: 'POST', body: JSON.stringify({ applicationId: currentAppId, rating: selectedStar, review: document.getElementById('reviewText').value, type: 'business-to-student' }) });
+        closeRatingModal(); loadDashboard();
+      } catch (err) { alert(err.message); }
+    }
+
+    async function updateStatus(id, status) {
+      try {
+        await apiFetch(`/applications/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
+        loadDashboard();
+      } catch (err) { alert(err.message); }
+    }
+
+    async function deleteJob(id) {
+      if (!confirm('Delete this shift? This cannot be undone.')) return;
+      try {
+        await apiFetch(`/jobs/${id}`, { method: 'DELETE' });
+        loadDashboard();
+      } catch (err) { alert(err.message); }
+    }
+
+    async function viewApplicants(jobId, title) {
+      document.getElementById('modal-title').textContent = title;
+      document.getElementById('modal-body').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+      document.getElementById('modal').classList.add('open');
+      try {
+        const apps = await apiFetch(`/applications/job/${jobId}`);
+        if (apps.length === 0) {
+          document.getElementById('modal-body').innerHTML = '<div class="empty"><h3>No applicants yet</h3></div>';
+          return;
+        }
+        document.getElementById('modal-body').innerHTML = apps.map(app => `
+          <div style="padding:1rem 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap">
+            <div>
+              <a href="/pages/profile.html?id=${app.student?._id}" style="font-weight:600;color:var(--text);text-decoration:none">${app.student?.name || app.studentName}</a>
+              <div style="font-size:0.82rem;color:var(--text-muted);margin-top:0.2rem">
+                ${app.student?.college ? `🎓 ${app.student.college}` : ''}
+                ${app.student?.shiftsCompleted ? ` · ${app.student.shiftsCompleted} shifts done` : ''}
+                ${app.student?.rating ? ` · ⭐ ${app.student.rating}` : ''}
+              </div>
+              ${app.student?.missedShifts >= 3 ? `<div style="font-size:0.78rem;color:var(--accent2);margin-top:0.2rem">⚠ ${app.student.missedShifts} missed shifts</div>` : ''}
+            </div>
+            <div style="display:flex;gap:0.5rem;align-items:center">
+              <span class="badge ${app.status}">${app.status}</span>
+              ${app.status === 'pending' ? `
+                <button class="btn btn-success btn-sm" onclick="updateStatus('${app._id}','accepted');closeModal()">Accept</button>
+                <button class="btn btn-danger btn-sm" onclick="updateStatus('${app._id}','rejected');closeModal()">Reject</button>` : ''}
+            </div>
+          </div>`).join('');
+      } catch (err) {
+        document.getElementById('modal-body').innerHTML = '<p style="color:var(--text-muted)">Error loading applicants</p>';
+      }
+    }
+
+    async function loadDashboard() {
+      try {
+        allJobs = await apiFetch('/jobs/mine');
+        const jobsContainer = document.getElementById('jobs-list');
+        const now = new Date();
+
+        if (allJobs.length === 0) {
+          jobsContainer.innerHTML = `<div class="empty"><div class="empty-icon">📋</div><h3>No shifts posted yet</h3><p>Post your first shift to find workers</p></div>`;
+        } else {
+          jobsContainer.innerHTML = allJobs.map(job => {
+            const expired = new Date(job.shiftEndsAt) < now;
+            const slotPct = (job.slotsFilled / job.slotsTotal) * 100;
+            return `<div class="app-card" style="margin-bottom:0.7rem">
+              <div style="flex:1">
+                <div class="app-title">${job.title} <span class="badge ${job.status}" style="margin-left:0.5rem">${job.status}</span></div>
+                <div class="app-meta">📍 ${job.location} · 📅 ${job.date} · ${job.startTime}–${job.endTime} · ₹${job.pay}/hr</div>
+                <div style="margin-top:0.5rem;max-width:200px">
+                  <div class="slots-label" style="font-size:0.75rem;color:var(--text-muted)">${job.slotsFilled}/${job.slotsTotal} slots filled</div>
+                  <div class="slots-track"><div class="slots-fill ${job.status==='full'?'full':''}" style="width:${slotPct}%"></div></div>
+                </div>
+              </div>
+              <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+                ${!expired ? `<button class="btn btn-secondary btn-sm" onclick="viewApplicants('${job._id}','${job.title}')">👥 ${job.applicantsCount||0} Applicants</button>` : ''}
+                <button class="btn btn-danger btn-sm" onclick="deleteJob('${job._id}')">Delete</button>
+              </div>
+            </div>`;
+          }).join('');
+        }
+
+        // Load all applications
+        allApps = [];
+        for (const job of allJobs) {
+          const apps = await apiFetch(`/applications/job/${job._id}`);
+          apps.forEach(a => allApps.push({ ...a, jobTitle: job.title, jobShiftEndsAt: job.shiftEndsAt }));
+        }
+
+        document.getElementById('stats').innerHTML = `
+          <div class="stat-card"><div class="num accent">${allJobs.length}</div><div class="label">Shifts Posted</div></div>
+          <div class="stat-card"><div class="num">${allApps.length}</div><div class="label">Total Applications</div></div>
+          <div class="stat-card"><div class="num">${allApps.filter(a=>a.status==='accepted').length}</div><div class="label">Accepted</div></div>
+          <div class="stat-card"><div class="num">${allApps.filter(a=>a.status==='pending').length}</div><div class="label">Pending</div></div>
+        `;
+
+        const appsContainer = document.getElementById('apps-list');
+        if (allApps.length === 0) {
+          appsContainer.innerHTML = `<div class="empty"><div class="empty-icon">📥</div><h3>No applications yet</h3></div>`;
+          return;
+        }
+
+        appsContainer.innerHTML = allApps.map(app => {
+          const shiftEnded = new Date(app.jobShiftEndsAt) < now;
+          const canRate = shiftEnded && app.status === 'accepted' && !app.businessRatedStudent;
+          return `<div class="app-card">
+            <div>
+              <a href="/pages/profile.html?id=${app.student?._id}" style="font-weight:600;color:var(--text);text-decoration:none">${app.student?.name || app.studentName}</a>
+              <div class="app-meta">Applied for: ${app.jobTitle}</div>
+              <div class="app-meta">${app.student?.college || ''} ${app.student?.rating ? `· ⭐ ${app.student.rating}` : ''}</div>
+            </div>
+            <div class="app-actions">
+              <span class="badge ${app.status}">${app.status}</span>
+              ${app.status === 'pending' ? `
+                <button class="btn btn-success btn-sm" onclick="updateStatus('${app._id}','accepted')">Accept</button>
+                <button class="btn btn-danger btn-sm" onclick="updateStatus('${app._id}','rejected')">Reject</button>` : ''}
+              ${canRate ? `<button class="btn btn-secondary btn-sm" onclick="openRatingModal('${app._id}')">Rate</button>` : ''}
+            </div>
+          </div>`;
+        }).join('');
+      } catch (err) { console.error(err); }
+    }
+
+    loadDashboard();
+  </script>
+</body>
+</html>

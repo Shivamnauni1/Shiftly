@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Profile — Shiftly</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="navbar"></div>
+
+  <div id="profile-content">
+    <div class="loading"><div class="spinner"></div>Loading profile...</div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    document.getElementById('navbar').innerHTML = buildNav();
+    const params = new URLSearchParams(window.location.search);
+    const profileId = params.get('id');
+    const me = getUser();
+
+    async function loadProfile() {
+      try {
+        const id = profileId || (me ? me.id : null);
+        if (!id) return window.location.href = '/pages/login.html';
+
+        const { user, reviews } = await apiFetch(`/users/${id}`);
+        const isMe = me && me.id === id;
+        const ratingStars = user.rating ? stars(user.rating) : '☆☆☆☆☆';
+
+        let profileHTML = `
+          <div class="profile-hero">
+            <div class="container" style="padding-top:0;padding-bottom:0">
+              <div style="display:flex;align-items:flex-end;gap:1.5rem;flex-wrap:wrap">
+                <div class="profile-avatar">${user.name.charAt(0).toUpperCase()}</div>
+                <div style="flex:1">
+                  <div style="display:flex;align-items:center;gap:0.8rem;flex-wrap:wrap">
+                    <div class="profile-name">${user.name}</div>
+                    ${user.verified ? `<span class="badge accepted">✓ Verified</span>` : ''}
+                    ${user.role === 'student' && user.shiftsCompleted >= 5 && user.rating >= 4 ? `<span class="badge accepted">⭐ Reliable Worker</span>` : ''}
+                  </div>
+                  <div class="profile-meta">${user.role === 'student' ? `🎓 ${user.college || 'Student'}` : `🏪 ${user.businessType || 'Business'} · ${user.businessLocation || ''}`}</div>
+                  <div style="margin-top:0.5rem;display:flex;align-items:center;gap:0.5rem">
+                    <span class="stars">${ratingStars}</span>
+                    <span style="color:var(--text-muted);font-size:0.85rem">${user.rating ? `${user.rating} (${user.totalRatings} reviews)` : 'No ratings yet'}</span>
+                  </div>
+                  ${user.role === 'student' && user.skills?.length ? `
+                    <div class="profile-tags">
+                      ${user.skills.map(s => `<span class="profile-tag">${s}</span>`).join('')}
+                    </div>` : ''}
+                </div>
+                ${isMe ? `<a href="/pages/edit-profile.html" class="btn btn-secondary btn-sm">Edit Profile</a>` : ''}
+              </div>
+            </div>
+          </div>
+
+          <div class="container">
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:1rem;margin-bottom:2.5rem">`;
+
+        if (user.role === 'student') {
+          profileHTML += `
+              <div class="stat-card"><div class="num accent">${user.shiftsCompleted}</div><div class="label">Shifts Done</div></div>
+              <div class="stat-card"><div class="num">${user.rating || 0}</div><div class="label">Rating</div></div>
+              <div class="stat-card"><div class="num ${user.missedShifts >= 3 ? 'accent' : ''}">${user.missedShifts || 0}</div><div class="label">Missed Shifts</div></div>
+              <div class="stat-card"><div class="num">${user.lastMinuteCancellations || 0}</div><div class="label">Late Cancels</div></div>`;
+        } else {
+          profileHTML += `
+              <div class="stat-card"><div class="num accent">${user.shiftsPosted}</div><div class="label">Shifts Posted</div></div>
+              <div class="stat-card"><div class="num">${user.rating || 0}</div><div class="label">Rating</div></div>
+              <div class="stat-card"><div class="num">${user.totalRatings || 0}</div><div class="label">Reviews</div></div>`;
+        }
+
+        profileHTML += `</div>`;
+
+        if (user.role === 'business' && user.businessDescription) {
+          profileHTML += `
+            <div class="section-title">About</div>
+            <div class="card" style="margin-bottom:2rem"><p style="color:var(--text-secondary);line-height:1.7">${user.businessDescription}</p></div>`;
+        }
+
+        profileHTML += `<div class="section-title">Reviews</div>`;
+
+        if (reviews.length === 0) {
+          profileHTML += `<div class="empty"><div class="empty-icon">⭐</div><h3>No reviews yet</h3></div>`;
+        } else {
+          profileHTML += reviews.map(r => `
+            <div class="rating-card">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <div class="reviewer">${r.ratedBy?.name || 'Anonymous'}</div>
+                <span class="stars" style="font-size:0.85rem">${stars(r.rating)}</span>
+              </div>
+              ${r.review ? `<div class="review-text">"${r.review}"</div>` : ''}
+              <div style="font-size:0.75rem;color:var(--text-muted);margin-top:0.4rem">${new Date(r.createdAt).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</div>
+            </div>`).join('');
+        }
+
+        profileHTML += `</div>`;
+        document.getElementById('profile-content').innerHTML = profileHTML;
+      } catch (err) {
+        document.getElementById('profile-content').innerHTML = `<div class="empty"><h3>Profile not found</h3></div>`;
+      }
+    }
+
+    loadProfile();
+  </script>
+</body>
+</html>

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — Shiftly</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="navbar"></div>
+  <div class="dashboard-hero">
+    <h2>Hey, <span id="sname" style="color:var(--accent)"></span> 👋</h2>
+    <p>Here's your shift activity</p>
+  </div>
+  <div class="container">
+    <div class="stats-grid" id="stats"></div>
+    <div class="section-title">
+      My Applications
+      <a href="/pages/jobs.html" class="btn btn-secondary btn-sm">Find Shifts</a>
+    </div>
+    <div id="apps-list"></div>
+  </div>
+
+  <!-- Rating Modal -->
+  <div class="modal-overlay" id="ratingModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Rate this Business</h3>
+        <button class="modal-close" onclick="closeModal()">✕</button>
+      </div>
+      <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:1rem">How was your experience working here?</p>
+      <div class="star-input" id="starInput">
+        <span onclick="setStar(1)">★</span><span onclick="setStar(2)">★</span>
+        <span onclick="setStar(3)">★</span><span onclick="setStar(4)">★</span><span onclick="setStar(5)">★</span>
+      </div>
+      <div class="form-group"><label>Leave a review (optional)</label><textarea id="reviewText" placeholder="How was the experience?"></textarea></div>
+      <button class="btn btn-primary btn-full" onclick="submitRating()">Submit Rating</button>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    document.getElementById('navbar').innerHTML = buildNav();
+    const user = getUser();
+    if (!user || user.role !== 'student') window.location.href = '/pages/login.html';
+    document.getElementById('sname').textContent = user.name;
+
+    let selectedStar = 0, currentAppId = null;
+
+    function setStar(n) {
+      selectedStar = n;
+      document.querySelectorAll('#starInput span').forEach((s, i) => s.classList.toggle('active', i < n));
+    }
+
+    function openRatingModal(appId) { currentAppId = appId; document.getElementById('ratingModal').classList.add('open'); }
+    function closeModal() { document.getElementById('ratingModal').classList.remove('open'); selectedStar = 0; }
+
+    async function submitRating() {
+      if (!selectedStar) return alert('Please select a star rating');
+      try {
+        await apiFetch('/ratings', { method: 'POST', body: JSON.stringify({ applicationId: currentAppId, rating: selectedStar, review: document.getElementById('reviewText').value, type: 'student-to-business' }) });
+        closeModal(); loadApps();
+      } catch (err) { alert(err.message); }
+    }
+
+    async function cancelApp(id) {
+      if (!confirm('Cancel this application?')) return;
+      try {
+        const res = await apiFetch(`/applications/${id}/cancel`, { method: 'PUT', body: JSON.stringify({}) });
+        if (res.isLastMinute) alert('Note: This was a last-minute cancellation and has been noted on your profile.');
+        loadApps();
+      } catch (err) { alert(err.message); }
+    }
+
+    async function loadApps() {
+      try {
+        const apps = await apiFetch('/applications/mine');
+        const now = new Date();
+
+        const completed = apps.filter(a => a.job && new Date(a.job.shiftEndsAt) < now && a.status === 'accepted').length;
+        const pending = apps.filter(a => a.status === 'pending').length;
+        const accepted = apps.filter(a => a.status === 'accepted').length;
+        const cancelled = apps.filter(a => a.status === 'cancelled').length;
+
+        document.getElementById('stats').innerHTML = `
+          <div class="stat-card"><div class="num accent">${apps.length}</div><div class="label">Total Applied</div></div>
+          <div class="stat-card"><div class="num">${accepted}</div><div class="label">Accepted</div></div>
+          <div class="stat-card"><div class="num">${pending}</div><div class="label">Pending</div></div>
+          <div class="stat-card"><div class="num">${completed}</div><div class="label">Completed</div></div>
+        `;
+
+        const list = document.getElementById('apps-list');
+        if (apps.length === 0) {
+          list.innerHTML = `<div class="empty"><div class="empty-icon">🔍</div><h3>No applications yet</h3><p>Browse shifts and apply to get started</p></div>`;
+          return;
+        }
+
+        list.innerHTML = apps.map(app => {
+          if (!app.job) return '';
+          const shiftEnded = new Date(app.job.shiftEndsAt) < now;
+          const canCancel = app.status === 'accepted' || app.status === 'pending';
+          const canRate = shiftEnded && app.status === 'accepted' && !app.studentRatedBusiness;
+          const cd = countdown(app.job.shiftStartsAt, app.job.shiftEndsAt);
+
+          return `<div class="app-card">
+            <div>
+              <div class="app-title">${app.job.title}</div>
+              <div class="app-meta">📍 ${app.job.location} · 📅 ${app.job.date} · ${app.job.startTime}–${app.job.endTime}</div>
+              <div class="app-meta" style="margin-top:0.3rem">₹${app.job.pay}/hr · ${app.job.businessName}</div>
+            </div>
+            <div class="app-actions">
+              <span class="badge ${app.status}">${app.status}</span>
+              ${!shiftEnded ? `<span style="font-size:0.78rem;color:var(--text-muted)">${cd.text}</span>` : ''}
+              ${canRate ? `<button class="btn btn-secondary btn-sm" onclick="openRatingModal('${app._id}')">Rate</button>` : ''}
+              ${canCancel && !shiftEnded ? `<button class="btn btn-danger btn-sm" onclick="cancelApp('${app._id}')">Cancel</button>` : ''}
+            </div>
+          </div>`;
+        }).join('');
+      } catch (err) { console.error(err); }
+    }
+
+    loadApps();
+  </script>
+</body>
+</html>

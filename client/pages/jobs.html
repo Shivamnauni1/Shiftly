@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Browse Shifts — Shiftly</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="navbar"></div>
+  <div class="container">
+    <div class="page-header">
+      <h2>Available Shifts</h2>
+      <p>Part-time work near you — pick what fits your day</p>
+    </div>
+
+    <div class="search-bar">
+      <span>📍</span>
+      <input type="text" id="locationInput" placeholder="Enter your area to see nearby shifts (e.g. Rajpur Road)" onkeydown="if(event.key==='Enter') searchLocation()">
+      <button class="btn btn-secondary btn-sm" onclick="searchLocation()">Search</button>
+      <button class="btn btn-primary btn-sm" onclick="useGPS()">📡 GPS</button>
+    </div>
+
+    <div class="filters-bar">
+      <span class="filter-chip active" onclick="setCategory('All',this)">All</span>
+      <span class="filter-chip" onclick="setCategory('Restaurant',this)">🍽 Restaurant</span>
+      <span class="filter-chip" onclick="setCategory('Cafe',this)">☕ Cafe</span>
+      <span class="filter-chip" onclick="setCategory('Wedding',this)">💍 Wedding</span>
+      <span class="filter-chip" onclick="setCategory('Retail',this)">🛍 Retail</span>
+      <span class="filter-chip" onclick="setCategory('Event',this)">🎉 Event</span>
+    </div>
+
+    <div id="jobs-list" class="job-grid">
+      <div class="loading" style="grid-column:1/-1"><div class="spinner"></div>Loading shifts...</div>
+    </div>
+
+    <div class="load-more" id="loadMoreBtn" style="display:none">
+      <button class="btn btn-secondary" onclick="loadMore()">Load More Shifts</button>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    document.getElementById('navbar').innerHTML = buildNav();
+    const user = getUser();
+    let currentPage = 1, currentCategory = 'All', userLat = null, userLng = null;
+
+    async function loadJobs(reset = false) {
+      if (reset) {
+        currentPage = 1;
+        document.getElementById('jobs-list').innerHTML = '<div class="loading" style="grid-column:1/-1"><div class="spinner"></div>Loading shifts...</div>';
+      }
+      try {
+        let url = `/jobs?page=${currentPage}&category=${currentCategory}`;
+        if (userLat && userLng) url += `&lat=${userLat}&lng=${userLng}`;
+        const data = await apiFetch(url);
+        const container = document.getElementById('jobs-list');
+        if (reset) container.innerHTML = '';
+
+        if (data.jobs.length === 0 && currentPage === 1) {
+          container.innerHTML = `<div class="empty" style="grid-column:1/-1">
+            <div class="empty-icon">🔍</div>
+            <h3>No shifts nearby right now</h3>
+            <p>Try a different area or check back soon</p>
+          </div>`;
+          document.getElementById('loadMoreBtn').style.display = 'none';
+          return;
+        }
+
+        container.innerHTML += data.jobs.map(job => buildJobCard(job, user)).join('');
+        document.getElementById('loadMoreBtn').style.display = data.hasMore ? 'block' : 'none';
+        startCountdownTicker();
+      } catch (err) {
+        document.getElementById('jobs-list').innerHTML = `<div class="empty" style="grid-column:1/-1"><h3>Error loading shifts</h3></div>`;
+      }
+    }
+
+    function loadMore() { currentPage++; loadJobs(); }
+
+    function setCategory(cat, el) {
+      currentCategory = cat;
+      document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+      el.classList.add('active');
+      loadJobs(true);
+    }
+
+    async function searchLocation() {
+      const text = document.getElementById('locationInput').value.trim();
+      if (!text) return;
+      const btn = event?.target;
+      if (btn) { btn.textContent = 'Searching...'; btn.disabled = true; }
+      const coords = await geocodeLocation(text);
+      if (btn) { btn.textContent = 'Search'; btn.disabled = false; }
+      if (coords) {
+        userLat = coords.lat;
+        userLng = coords.lng;
+        loadJobs(true);
+      } else {
+        alert('Could not find that location. Try a more specific address.');
+      }
+    }
+
+    function useGPS() {
+      if (!navigator.geolocation) return alert('GPS not supported on this device');
+      navigator.geolocation.getCurrentPosition(pos => {
+        userLat = pos.coords.latitude;
+        userLng = pos.coords.longitude;
+        document.getElementById('locationInput').value = 'Using your current location';
+        loadJobs(true);
+      }, () => alert('Could not get your location. Try searching manually.'));
+    }
+
+    async function apply(jobId, btn) {
+      if (!isLoggedIn()) return window.location.href = '/pages/login.html';
+      btn.disabled = true; btn.textContent = 'Applying...';
+      try {
+        await apiFetch(`/applications/${jobId}`, {
+          method: 'POST',
+          body: JSON.stringify({ studentName: user.name })
+        });
+        btn.textContent = '✓ Applied!';
+        btn.className = 'btn btn-success btn-sm';
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = 'Apply Now';
+        alert(err.message);
+      }
+    }
+
+    loadJobs();
+  </script>
+</body>
+</html>
